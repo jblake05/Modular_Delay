@@ -129,6 +129,8 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 }
 
 queue<float> delayBuffers[2];
+float FEEDBACK = 0.5;
+double THRESHOLD = 0.001;
 
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
@@ -163,23 +165,26 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
-    int maxDelaySize = buffer.getNumSamples()*100;
+
+    // 500 ms
+    // TODO: Conversion from samplerate to ms as a funciton
+    int maxDelaySize = (int) getSampleRate()/2;
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
         for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-            // cout << delayBuffers[channel].size();
-            // cout << "\n";
+            if (delayBuffers[channel].size() >= maxDelaySize) {
+                float out = delayBuffers[channel].front() * FEEDBACK;
+                // if (out > THRESHOLD) {
+                    // add delayed sound, push back into buffer
+                channelData[sample] += out;
+                // }
+                delayBuffers[channel].pop();
+            }
             delayBuffers[channel].push(channelData[sample]);
 
-            if (delayBuffers[channel].size() >= maxDelaySize) {
-                channelData[sample] += delayBuffers[channel].front();
-                delayBuffers[channel].pop();
-                // cout << "Here";
-                // channelData[sample] = 0;
-            }
         }
     }
 }
