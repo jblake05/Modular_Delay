@@ -1,5 +1,9 @@
 #include "../include/Modular_Delay/PluginProcessor.h"
 #include "../include/Modular_Delay/PluginEditor.h"
+#include <queue>
+#include <vector>
+
+using namespace std;
 
 // #include "PluginProcessor.h"
 // #include "PluginEditor.h"
@@ -124,6 +128,8 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
   #endif
 }
 
+queue<float> delayBuffers[2];
+
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
 {
@@ -148,11 +154,30 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
+    
+    // queue<float> delayBuffers[totalNumInputChannels];
+    // vector<queue<float>> delayBuffers;
+
+
+    // cout << "Here\n";
+    // Retool to take user (knob?) input in future
+    int maxDelaySize = buffer.getNumSamples()*100;
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        auto* channelData = buffer.getWritePointer (channel);
-        juce::ignoreUnused (channelData);
-        // ..do something to the data...
+        auto* channelData = buffer.getWritePointer(channel);
+        juce::ignoreUnused(channelData);
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++){
+            cout << delayBuffers[channel].size();
+            cout << "\n";
+            
+            if (delayBuffers[channel].size() >= maxDelaySize) {
+                channelData[sample] += delayBuffers[channel].back();
+                delayBuffers[channel].pop();
+                // channelData[sample] = 0;
+            }
+            delayBuffers[channel].push(channelData[sample]);
+        }
     }
 }
 
