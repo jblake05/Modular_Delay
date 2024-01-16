@@ -1,5 +1,6 @@
 #include "../include/Modular_Delay/PluginProcessor.h"
 #include "../include/Modular_Delay/PluginEditor.h"
+// #include "../include/Modular_Delay/juce_Slider.h"
 
 // #include "PluginProcessor.h"
 // #include "PluginEditor.h"
@@ -21,16 +22,22 @@ AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
 //==============================================================================
 void AudioPluginAudioProcessorEditor::paint (juce::Graphics& g)
 {
+
+    // TODO: Parameter knobs for feedback and delay time
     // (Our component is opaque, so we must completely fill the background with a solid colour)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
+
+    // juce::Slider
 
     g.setColour (juce::Colours::white);
     g.setFont (15.0f);
     g.drawFittedText ("Hello World!", getLocalBounds(), juce::Justification::centred, 1);
+    
 }
 
 void AudioPluginAudioProcessorEditor::resized()
 {
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
+
 }

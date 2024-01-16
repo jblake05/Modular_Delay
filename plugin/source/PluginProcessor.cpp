@@ -5,8 +5,13 @@
 
 using namespace std;
 
-// #include "PluginProcessor.h"
-// #include "PluginEditor.h"
+/*
+Author: Jeff Blake <jtblake@middlebury.edu>
+*/
+
+juce::AudioParameterFloat* feedback;
+juce::AudioParameterInt* delay;
+double srate;
 
 //==============================================================================
 AudioPluginAudioProcessor::AudioPluginAudioProcessor()
@@ -19,6 +24,22 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
                      #endif
                        )
 {
+    // documented (along with get/set stateInformation) here: https://docs.juce.com/master/tutorial_audio_parameter.html
+    addParameter(feedback = new juce::AudioParameterFloat(
+        "feedback",
+        "Feedback",
+        0.0f,
+        .95f,
+        0.5f
+    ));
+
+    addParameter(delay = new juce::AudioParameterInt(
+        "delay",
+        "Delay",
+        50,
+        2000,
+        500
+    ));
 }
 
 AudioPluginAudioProcessor::~AudioPluginAudioProcessor()
@@ -91,11 +112,14 @@ void AudioPluginAudioProcessor::changeProgramName (int index, const juce::String
 }
 
 //==============================================================================
+
+// tip to grab samplerate here from https://forum.juce.com/t/how-to-access-the-audio-streams-sampling-rate-in-juce-program/35844/6
 void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
     juce::ignoreUnused (sampleRate, samplesPerBlock);
+    srate = sampleRate;
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -128,6 +152,18 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
   #endif
 }
 
+// Input: in (signal), gainAmtDB (desired gain in DB)
+float applyGain(float in, float gainAmtDB) {
+    // Seems to increase it by double the desired gain.......
+    return (float) (gainAmtDB >= 0 ? in * pow(10, gainAmtDB/10) : in / pow(10, -gainAmtDB/10));
+}
+
+// converts ms to (most accurate, typically won't be exact) number of samples
+int sizeInSamples(int msecs) {
+    return (int) (srate * ((float) msecs/1000));
+}
+
+// TODO: Make based on numIns
 queue<float> delayBuffers[2];
 
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -136,8 +172,11 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     juce::ignoreUnused (midiMessages);
 
     juce::ScopedNoDenormals noDenormals;
+
+    // By default, numIns is 2
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
+    float FEEDBACK = *feedback;
 
     // In case we have more outputs than inputs, this code clears any output
     // channels that didn't contain input data, (because these aren't
@@ -161,20 +200,28 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
-    int maxDelaySize = buffer.getNumSamples()*100;
+  
+    int maxDelaySize = sizeInSamples(*delay);
+    
+    // (int) getSampleRate()/2;
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
+      
         for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-            cout << delayBuffers[channel].size();
-            cout << "\n";
-            
             if (delayBuffers[channel].size() >= maxDelaySize) {
-                channelData[sample] += delayBuffers[channel].back();
-                delayBuffers[channel].pop();
-                // channelData[sample] = 0;
+                // add delayed sound, push back into buffer
+                float out = delayBuffers[channel].front() * FEEDBACK;
+                // TODO: out = applyEffect(out, effectName)
+                // out = applyGain(out, 3); 
+                channelData[sample] += out;
+
+                // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
+                // might be a better idea to take away two or three each iteration
+                while (delayBuffers[channel].size() > maxDelaySize)
+                    delayBuffers[channel].pop();
             }
             delayBuffers[channel].push(channelData[sample]);
         }
@@ -189,7 +236,9 @@ bool AudioPluginAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* AudioPluginAudioProcessor::createEditor()
 {
-    return new AudioPluginAudioProcessorEditor (*this);
+    // return new AudioPluginAudioProcessorEditor (*this);
+    // generic for now......
+    return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
@@ -198,14 +247,19 @@ void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
-    juce::ignoreUnused (destData);
+    // juce::ignoreUnused (destData);
+    juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
+    juce::MemoryOutputStream(destData, true).writeInt(*delay);
 }
 
 void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
-    juce::ignoreUnused (data, sizeInBytes);
+    // juce::ignoreUnused (data, sizeInBytes);
+    *feedback = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
+    *delay = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readInt();
+
 }
 
 //==============================================================================
