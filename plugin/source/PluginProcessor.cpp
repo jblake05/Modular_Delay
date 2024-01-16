@@ -137,6 +137,8 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
+    // cout << totalNumInputChannels;
+    // cout << "\n";
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
     // In case we have more outputs than inputs, this code clears any output
@@ -168,15 +170,16 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
         for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-            cout << delayBuffers[channel].size();
-            cout << "\n";
-            
+            // cout << delayBuffers[channel].size();
+            // cout << "\n";
+            delayBuffers[channel].push(channelData[sample]);
+
             if (delayBuffers[channel].size() >= maxDelaySize) {
-                channelData[sample] += delayBuffers[channel].back();
+                channelData[sample] += delayBuffers[channel].front();
                 delayBuffers[channel].pop();
+                // cout << "Here";
                 // channelData[sample] = 0;
             }
-            delayBuffers[channel].push(channelData[sample]);
         }
     }
 }

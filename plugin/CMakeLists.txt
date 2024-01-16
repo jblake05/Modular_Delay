@@ -4,8 +4,7 @@ set(OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/out)
 
 project(AudioPlugin VERSION 0.1.0)
 
-juce_add_plugin(${PROJECT_NAME}
-    IS_SYNTH FALSE
+juce_add_plugin(${PROJECT_NAME}    IS_SYNTH FALSE
     COMPANY_NAME Jeff Blake
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE 
@@ -13,7 +12,7 @@ juce_add_plugin(${PROJECT_NAME}
     FORMATS Standalone VST3 AU
     PRODUCT_NAME "Modular_Delay"
     COPY_PLUGIN_AFTER_BUILD TRUE
-    VST3_COPY_DIR "C:/Users/Jeff/Desktop/"
+    VST3_COPY_DIR "C:/Users/Jeff/Desktop/CS/702/Modular_Delay/out"
 )
 
 target_sources(${PROJECT_NAME}
