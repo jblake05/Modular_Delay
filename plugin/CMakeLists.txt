@@ -13,7 +13,7 @@ juce_add_plugin(${PROJECT_NAME}
     FORMATS Standalone VST3 AU
     PRODUCT_NAME "Modular_Delay"
     COPY_PLUGIN_AFTER_BUILD TRUE
-    VST3_COPY_DIR "C:/Users/Jeff/Desktop/CS/702/Modular_Delay/out" "C:/Program Files/Common Files/VST3/"
+    VST3_COPY_DIR "C:/Program Files/Common Files/VST3/" 
 )
 
 target_sources(${PROJECT_NAME}
