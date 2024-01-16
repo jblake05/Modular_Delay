@@ -10,6 +10,8 @@ Author: Jeff Blake <jtblake@middlebury.edu>
 */
 
 juce::AudioParameterFloat* feedback;
+juce::AudioParameterInt* delay;
+double srate;
 
 //==============================================================================
 AudioPluginAudioProcessor::AudioPluginAudioProcessor()
@@ -22,12 +24,21 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
                      #endif
                        )
 {
+    // documented (along with get/set stateInformation) here: https://docs.juce.com/master/tutorial_audio_parameter.html
     addParameter(feedback = new juce::AudioParameterFloat(
         "feedback",
         "Feedback",
         0.0f,
         .95f,
         0.5f
+    ));
+
+    addParameter(delay = new juce::AudioParameterInt(
+        "delay",
+        "Delay",
+        50,
+        2000,
+        500
     ));
 }
 
@@ -101,11 +112,14 @@ void AudioPluginAudioProcessor::changeProgramName (int index, const juce::String
 }
 
 //==============================================================================
+
+// tip to grab samplerate here from https://forum.juce.com/t/how-to-access-the-audio-streams-sampling-rate-in-juce-program/35844/6
 void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
     juce::ignoreUnused (sampleRate, samplesPerBlock);
+    srate = sampleRate;
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -142,6 +156,11 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 float applyGain(float in, float gainAmtDB) {
     // Seems to increase it by double the desired gain.......
     return (float) (gainAmtDB >= 0 ? in * pow(10, gainAmtDB/10) : in / pow(10, -gainAmtDB/10));
+}
+
+// converts ms to (most accurate, typically won't be exact) number of samples
+int sizeInSamples(int msecs) {
+    return (int) (srate * ((float) msecs/1000));
 }
 
 queue<float> delayBuffers[2];
@@ -183,7 +202,9 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // 500 ms
     // TODO: Conversion from samplerate to ms as a funciton
-    int maxDelaySize = (int) getSampleRate()/2;
+    int maxDelaySize = sizeInSamples(*delay);
+    
+    // (int) getSampleRate()/2;
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -197,7 +218,11 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 // TODO: out = applyEffect(out, effectName)
                 // out = applyGain(out, 3); 
                 channelData[sample] += out;
-                delayBuffers[channel].pop();
+
+                // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
+                // might be a better idea to take away two or three each iteration
+                while (delayBuffers[channel].size() > maxDelaySize)
+                    delayBuffers[channel].pop();
             }
             delayBuffers[channel].push(channelData[sample]);
         }
@@ -225,6 +250,7 @@ void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     // as intermediaries to make it easy to save and load complex data.
     // juce::ignoreUnused (destData);
     juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
+    juce::MemoryOutputStream(destData, true).writeInt(*delay);
 }
 
 void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -233,6 +259,8 @@ void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeI
     // whose contents will have been created by the getStateInformation() call.
     // juce::ignoreUnused (data, sizeInBytes);
     *feedback = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
+    *delay = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readInt();
+
 }
 
 //==============================================================================
