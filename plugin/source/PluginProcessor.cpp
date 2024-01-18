@@ -12,6 +12,7 @@ Author: Jeff Blake <jtblake@middlebury.edu>
 juce::AudioParameterFloat* feedback;
 juce::AudioParameterInt* delay;
 juce::AudioParameterFloat* dist_ramp;
+juce::AudioParameterFloat* dist_dw;
 double srate;
 
 //==============================================================================
@@ -46,13 +47,24 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
         "d_ramp",
         "dist_ramp",
         0.0f,
-        5.0f,
+        0.1f,
+        0.01f
+    ));
+
+    addParameter(dist_dw = new juce::AudioParameterFloat(
+        "dist_dw",
+        "dist_dw",
+        0.0f,
+        1.0f,
         0.1f
     ));
+
+    // Define threads here
 }
 
 AudioPluginAudioProcessor::~AudioPluginAudioProcessor()
 {
+    // Break threads down
 }
 
 //==============================================================================
@@ -162,9 +174,13 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 }
 
 // Input: in (signal), gainAmtDB (desired gain in DB)
-float applyGain(float in, float gainAmtDB) {
+void applyGain(float *out, float gainAmtDB) {
     // Seems to increase it by double the desired gain.......
-    return (float) (gainAmtDB >= 0 ? in * pow(10, gainAmtDB/10) : in / pow(10, -gainAmtDB/10));
+    *out = (float) (gainAmtDB >= 0 ? *out * pow(10, gainAmtDB/10) : *out / pow(10, -gainAmtDB/10));
+}
+
+void applyDistortion(float *out, float dist) {
+    *out = tanh((1 - *dist_dw + dist * *dist_dw) * *out);
 }
 
 // just kind of adds buzz, needs white noise
@@ -177,9 +193,24 @@ int sizeInSamples(int msecs) {
     return (int) (srate * ((float) msecs/1000));
 }
 
+/* 
+Parallelization approches:
+OMP
+Interleaving samples
+Work queue (id numbers to put back into buffer)
+Busy/sleepy wait ^--
+*/
+
+// float mapDistDw(float dw, float dist) {
+//     // return 1/dist + ((1 - 1/dist) * dw);
+
+//     // = 1/dist + dw - dw/dist
+//     // = 1-dw/dist + dw
+// }
+
 // TODO: Make based on numIns
 queue<float> delayBuffers[2];
-float dist_start = 3.0f;
+float dist = 3.0f;
 
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
@@ -227,8 +258,8 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             if (delayBuffers[channel].size() >= maxDelaySize) {
                 // add delayed sound, push back into buffer
                 float out = delayBuffers[channel].front() * FEEDBACK;
-                out = tanh(dist_start * out);
-
+                // applyDistortion(&out, dist);
+                applyGain(&out, 1);
                 // TODO: out = applyEffect(out, effectName)
                 // out = applyNoise(out, 0.25f); 
                 // Using apply noise is making the output cut out after the delay time is up??
@@ -243,7 +274,8 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             delayBuffers[channel].push(channelData[sample]);
         }
     }
-    dist_start += *dist_ramp;
+    if (*dist_dw > 0 && *dist_ramp > 0)
+        dist += *dist_ramp;
 }
 
 //==============================================================================
@@ -269,6 +301,7 @@ void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
     juce::MemoryOutputStream(destData, true).writeInt(*delay);
     juce::MemoryOutputStream(destData, true).writeFloat(*dist_ramp);
+    juce::MemoryOutputStream(destData, true).writeFloat(*dist_dw);
 }
 
 void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -279,6 +312,7 @@ void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeI
     *feedback = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
     *delay = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readInt();
     *dist_ramp = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
+    *dist_dw = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
 }
 
 //==============================================================================
