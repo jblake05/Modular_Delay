@@ -178,6 +178,7 @@ int sizeInSamples(int msecs) {
     return (int) (srate * ((float) msecs/1000));
 }
 
+// TODO: Make based on numIns
 queue<float> delayBuffers[2];
 float dist_start = 3.0f;
 
@@ -215,16 +216,14 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
-
-    // 500 ms
-    // TODO: Conversion from samplerate to ms as a funciton
+  
     int maxDelaySize = sizeInSamples(*delay);
     
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
-
+      
         for (int sample = 0; sample < buffer.getNumSamples(); sample++){
             channelData[sample] = tanh(dist_start*channelData[sample]);
             if (delayBuffers[channel].size() >= maxDelaySize) {
