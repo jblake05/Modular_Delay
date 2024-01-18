@@ -12,7 +12,6 @@ Author: Jeff Blake <jtblake@middlebury.edu>
 juce::AudioParameterFloat* feedback;
 juce::AudioParameterInt* delay;
 juce::AudioParameterFloat* dist_ramp;
-
 double srate;
 
 //==============================================================================
@@ -225,10 +224,11 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         juce::ignoreUnused(channelData);
       
         for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-            channelData[sample] = tanh(dist_start*channelData[sample]);
             if (delayBuffers[channel].size() >= maxDelaySize) {
                 // add delayed sound, push back into buffer
                 float out = delayBuffers[channel].front() * FEEDBACK;
+                out = tanh(dist_start * out);
+
                 // TODO: out = applyEffect(out, effectName)
                 // out = applyNoise(out, 0.25f); 
                 // Using apply noise is making the output cut out after the delay time is up??
