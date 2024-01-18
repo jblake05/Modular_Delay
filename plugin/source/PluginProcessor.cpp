@@ -11,6 +11,8 @@ Author: Jeff Blake <jtblake@middlebury.edu>
 
 juce::AudioParameterFloat* feedback;
 juce::AudioParameterInt* delay;
+juce::AudioParameterFloat* dist_ramp;
+
 double srate;
 
 //==============================================================================
@@ -39,6 +41,14 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
         50,
         2000,
         500
+    ));
+
+    addParameter(dist_ramp = new juce::AudioParameterFloat(
+        "d_ramp",
+        "dist_ramp",
+        0.0f,
+        5.0f,
+        0.1f
     ));
 }
 
@@ -158,12 +168,18 @@ float applyGain(float in, float gainAmtDB) {
     return (float) (gainAmtDB >= 0 ? in * pow(10, gainAmtDB/10) : in / pow(10, -gainAmtDB/10));
 }
 
+// just kind of adds buzz, needs white noise
+// float applyNoise(float in, float noiseAmt) {
+//     return in + ((rand()/RAND_MAX) * noiseAmt - (2*noiseAmt));
+// } 
+
 // converts ms to (most accurate, typically won't be exact) number of samples
 int sizeInSamples(int msecs) {
     return (int) (srate * ((float) msecs/1000));
 }
 
 queue<float> delayBuffers[2];
+float dist_start = 3.0f;
 
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
@@ -204,19 +220,20 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // TODO: Conversion from samplerate to ms as a funciton
     int maxDelaySize = sizeInSamples(*delay);
     
-    // (int) getSampleRate()/2;
-
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
 
         for (int sample = 0; sample < buffer.getNumSamples(); sample++){
+            channelData[sample] = tanh(dist_start*channelData[sample]);
             if (delayBuffers[channel].size() >= maxDelaySize) {
                 // add delayed sound, push back into buffer
                 float out = delayBuffers[channel].front() * FEEDBACK;
                 // TODO: out = applyEffect(out, effectName)
-                // out = applyGain(out, 3); 
+                // out = applyNoise(out, 0.25f); 
+                // Using apply noise is making the output cut out after the delay time is up??
+
                 channelData[sample] += out;
 
                 // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
@@ -227,6 +244,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             delayBuffers[channel].push(channelData[sample]);
         }
     }
+    dist_start += *dist_ramp;
 }
 
 //==============================================================================
@@ -251,6 +269,7 @@ void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     // juce::ignoreUnused (destData);
     juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
     juce::MemoryOutputStream(destData, true).writeInt(*delay);
+    juce::MemoryOutputStream(destData, true).writeFloat(*dist_ramp);
 }
 
 void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -260,7 +279,7 @@ void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeI
     // juce::ignoreUnused (data, sizeInBytes);
     *feedback = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
     *delay = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readInt();
-
+    *dist_ramp = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
 }
 
 //==============================================================================
