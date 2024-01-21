@@ -19,6 +19,8 @@ juce::AudioParameterFloat* dist_ramp;
 juce::AudioParameterFloat* dist_dw;
 juce::AudioParameterBool* bypass;
 
+chrono::microseconds avgBlock;
+int avgCount = 0;
 double srate;
 
 //==============================================================================
@@ -198,14 +200,20 @@ void applyDistortion(float *out, float dist) {
 // Quantization, searches for closest. Definitely better way to do this.
 void bit_reduction(float *out, int num_bits){
     int steps = (int) pow(2, num_bits);
-    float stepSize = (float) 2/steps;
+    float stepSize = (float) 0.002/steps;
     float closestNum = INFINITY;
+    float closestDistance = INFINITY;
 
-    for (float i = -1; i <= 1; i+=stepSize) {
-        if (fabs(*out - i) < closestNum)
+    for (float i = (float) -1; i <= (float) 1; i += stepSize) {
+        float distance = fabs(*out - i);
+        if (distance < closestDistance)  {
+            closestDistance = distance;
             closestNum = i;
+        }
     }
-    *out = closestNum;
+    // cout << *out;
+    // *out = closestNum;
+    // cout << ", " << *out << "\n";
 }
 
 void downSample(juce::AudioBuffer<float>& buffer, int numIn, int factor) {
@@ -301,6 +309,8 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // vector<queue<float>> delayBuffers;
 
 
+        // cout << omp_get_thread_num;
+
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
   
@@ -308,17 +318,23 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     downSample(buffer, totalNumInputChannels, 16);
     
+    // omp_set_num_threads(4);
+    
+    // cout << omp_get_thread_num;
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
       
         if (!*bypass) {
+            // #pragma omp parallel for // like 163 compared to 166 serial on one run, either i did this wrong or theres like no difference
             for (int sample = 0; sample < buffer.getNumSamples(); sample++){
+                // cout << omp_get_thread_num << "\n";
                 if (delayBuffers[channel].size() >= maxDelaySize) {
                     // add delayed sound, push back into buffer
                     float out = delayBuffers[channel].front() * FEEDBACK;
-                    // bit_reduction(&out, 2);
+                    // bit_reduction(&out, 8);
 
                     // applyDistortion(&out, dist);
                     // applyGain(&out, 1);
@@ -339,11 +355,15 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             dist += *dist_ramp;
         }
     }
-    auto end = chrono::system_clock::now();
-    auto elapsed =  end - start;
-    chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
-    cout << elapsedMillis.count() << "\n";
-}
+    // if (!*bypass){
+    //     auto end = chrono::system_clock::now();
+    //     auto elapsed =  end - start;
+    //     chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
+    //     avgBlock += elapsedMillis;
+    //     avgCount++;
+    //     cout << avgBlock.count()/avgCount << "\n";
+    // }
+    }
 
 //==============================================================================
 bool AudioPluginAudioProcessor::hasEditor() const
