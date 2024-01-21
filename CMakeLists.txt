@@ -18,7 +18,7 @@ CPMAddPackage(
 )
 
 if (MSVC)
-    add_compile_options(/W4 /WX)
+    add_compile_options(/W4 /WX /openmp)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

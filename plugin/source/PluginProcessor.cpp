@@ -316,21 +316,25 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
   
     int maxDelaySize = sizeInSamples(*delay);
 
-    downSample(buffer, totalNumInputChannels, 16);
+    // downSample(buffer, totalNumInputChannels, 16);
     
     // omp_set_num_threads(4);
+    // #pragma omp parallel
+    // {
+    //     cout << omp_get_thread_num() << "\n";
+    // }
     
     // cout << omp_get_thread_num;
 
+    // omp parallel for overhead at this level much slower........ 166 muS serial vs ~ 500 muS parallel
+    // #pragma omp parallel for
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
       
         if (!*bypass) {
-            // #pragma omp parallel for // like 163 compared to 166 serial on one run, either i did this wrong or theres like no difference
             for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-                // cout << omp_get_thread_num << "\n";
                 if (delayBuffers[channel].size() >= maxDelaySize) {
                     // add delayed sound, push back into buffer
                     float out = delayBuffers[channel].front() * FEEDBACK;
@@ -355,14 +359,14 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             dist += *dist_ramp;
         }
     }
-    // if (!*bypass){
-    //     auto end = chrono::system_clock::now();
-    //     auto elapsed =  end - start;
-    //     chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
-    //     avgBlock += elapsedMillis;
-    //     avgCount++;
-    //     cout << avgBlock.count()/avgCount << "\n";
-    // }
+    if (!*bypass){
+        auto end = chrono::system_clock::now();
+        auto elapsed =  end - start;
+        chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
+        avgBlock += elapsedMillis;
+        avgCount++;
+        cout << avgBlock.count()/avgCount << "\n";
+    }
     }
 
 //==============================================================================
