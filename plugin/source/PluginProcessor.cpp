@@ -197,20 +197,12 @@ void applyDistortion(float *out, float dist) {
     *out = tanh((1 - *dist_dw + dist * *dist_dw) * *out);
 }
 
-// Quantization, searches for closest. Definitely better way to do this.
+// Quantizes using modulo
 void bit_reduction(float *out, int num_bits){
     int steps = (int) pow(2, num_bits);
-    float stepSize = (float) 0.002/steps;
-    float closestNum = INFINITY;
-    float closestDistance = INFINITY;
+    float stepSize = (float) 2/steps;
+    *out -= fmod(*out, stepSize);
 
-    for (float i = (float) -1; i <= (float) 1; i += stepSize) {
-        float distance = fabs(*out - i);
-        if (distance < closestDistance)  {
-            closestDistance = distance;
-            closestNum = i;
-        }
-    }
     // cout << *out;
     // *out = closestNum;
     // cout << ", " << *out << "\n";
@@ -287,7 +279,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // By default, numIns is 2
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
-    float FEEDBACK = *feedback;
+    // float FEEDBACK = *feedback;
 
     // In case we have more outputs than inputs, this code clears any output
     // channels that didn't contain input data, (because these aren't
@@ -314,7 +306,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
   
-    int maxDelaySize = sizeInSamples(*delay);
+    // int maxDelaySize = sizeInSamples(*delay);
 
     // downSample(buffer, totalNumInputChannels, 16);
     
@@ -335,38 +327,39 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
       
         if (!*bypass) {
             for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-                if (delayBuffers[channel].size() >= maxDelaySize) {
-                    // add delayed sound, push back into buffer
-                    float out = delayBuffers[channel].front() * FEEDBACK;
-                    // bit_reduction(&out, 8);
+                bit_reduction(&channelData[sample], 6);
+                // if (delayBuffers[channel].size() >= maxDelaySize) {
+                //     // add delayed sound, push back into buffer
+                //     float out = delayBuffers[channel].front() * FEEDBACK;
+                //     // bit_reduction(&out, 8);
 
-                    // applyDistortion(&out, dist);
-                    // applyGain(&out, 1);
-                    // TODO: out = applyEffect(out, effectName)
-                    // out = applyNoise(out, 0.25f); 
-                    // Using apply noise is making the output cut out after the delay time is up??
+                //     // applyDistortion(&out, dist);
+                //     // applyGain(&out, 1);
+                //     // TODO: out = applyEffect(out, effectName)
+                //     // out = applyNoise(out, 0.25f); 
+                //     // Using apply noise is making the output cut out after the delay time is up??
 
-                    channelData[sample] += out;
+                //     channelData[sample] += out;
 
-                    // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
-                    // might be a better idea to take away two or three each iteration
-                    while (delayBuffers[channel].size() > maxDelaySize)
-                        delayBuffers[channel].pop();
-                }
-                delayBuffers[channel].push(channelData[sample]);
+                //     // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
+                //     // might be a better idea to take away two or three each iteration
+                //     while (delayBuffers[channel].size() > maxDelaySize)
+                //         delayBuffers[channel].pop();
+                // }
+                // delayBuffers[channel].push(channelData[sample]);
             }
-        if (*dist_dw > 0 && *dist_ramp > 0)
-            dist += *dist_ramp;
+        // if (*dist_dw > 0 && *dist_ramp > 0)
+        //     dist += *dist_ramp;
         }
     }
-    if (!*bypass){
-        auto end = chrono::system_clock::now();
-        auto elapsed =  end - start;
-        chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
-        avgBlock += elapsedMillis;
-        avgCount++;
-        cout << avgBlock.count()/avgCount << "\n";
-    }
+    // if (!*bypass){
+    //     auto end = chrono::system_clock::now();
+    //     auto elapsed =  end - start;
+    //     chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
+    //     avgBlock += elapsedMillis;
+    //     avgCount++;
+    //     cout << avgBlock.count()/avgCount << "\n";
+    // }
     }
 
 //==============================================================================
