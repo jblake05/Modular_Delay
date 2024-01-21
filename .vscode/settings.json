@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "queue": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "cmath": "cpp"
     }
 }
