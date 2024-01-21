@@ -2,6 +2,10 @@
 #include "../include/Modular_Delay/PluginEditor.h"
 #include <queue>
 #include <vector>
+#include <math.h>
+#include <time.h>
+#include <chrono>
+#include <omp.h>
 
 using namespace std;
 
@@ -11,6 +15,12 @@ Author: Jeff Blake <jtblake@middlebury.edu>
 
 juce::AudioParameterFloat* feedback;
 juce::AudioParameterInt* delay;
+juce::AudioParameterFloat* dist_ramp;
+juce::AudioParameterFloat* dist_dw;
+juce::AudioParameterBool* bypass;
+
+chrono::microseconds avgBlock;
+int avgCount = 0;
 double srate;
 
 //==============================================================================
@@ -40,10 +50,35 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
         2000,
         500
     ));
+
+    addParameter(dist_ramp = new juce::AudioParameterFloat(
+        "d_ramp",
+        "dist_ramp",
+        0.0f,
+        0.1f,
+        0.01f
+    ));
+
+    addParameter(dist_dw = new juce::AudioParameterFloat(
+        "dist_dw",
+        "dist_dw",
+        0.0f,
+        1.0f,
+        0.1f
+    ));
+
+    addParameter(bypass = new juce::AudioParameterBool(
+        "bypass",
+        "Bypass",
+        false
+    ));
+
+    // Define threads here
 }
 
 AudioPluginAudioProcessor::~AudioPluginAudioProcessor()
 {
+    // Break threads down
 }
 
 //==============================================================================
@@ -153,22 +188,98 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 }
 
 // Input: in (signal), gainAmtDB (desired gain in DB)
-float applyGain(float in, float gainAmtDB) {
+void applyGain(float *out, float gainAmtDB) {
     // Seems to increase it by double the desired gain.......
-    return (float) (gainAmtDB >= 0 ? in * pow(10, gainAmtDB/10) : in / pow(10, -gainAmtDB/10));
+    *out = (float) (gainAmtDB >= 0 ? *out * pow(10, gainAmtDB/10) : *out / pow(10, -gainAmtDB/10));
 }
+
+void applyDistortion(float *out, float dist) {
+    *out = tanh((1 - *dist_dw + dist * *dist_dw) * *out);
+}
+
+// Quantization, searches for closest. Definitely better way to do this.
+void bit_reduction(float *out, int num_bits){
+    int steps = (int) pow(2, num_bits);
+    float stepSize = (float) 0.002/steps;
+    float closestNum = INFINITY;
+    float closestDistance = INFINITY;
+
+    for (float i = (float) -1; i <= (float) 1; i += stepSize) {
+        float distance = fabs(*out - i);
+        if (distance < closestDistance)  {
+            closestDistance = distance;
+            closestNum = i;
+        }
+    }
+    // cout << *out;
+    // *out = closestNum;
+    // cout << ", " << *out << "\n";
+}
+
+void downSample(juce::AudioBuffer<float>& buffer, int numIn, int factor) {
+
+    float prevSample[2];
+
+    for (int channel = 0; channel < numIn; ++channel)
+    {
+        auto* channelData = buffer.getWritePointer(channel);
+        juce::ignoreUnused(channelData);
+        
+        for (int sample = 0; sample < buffer.getNumSamples(); sample++){
+            if (factor != 1) {
+                if (sample % factor == 0)
+                    prevSample[channel] = channelData[sample];
+                else
+                    channelData[sample] = prevSample[channel];
+            }
+        }
+    }
+
+}
+
+// void applyLowPass(juce::AudioBuffer<float>& buffer, int channel, double alpha) {
+//     double speriod = 1/srate;
+//     double RC = speriod * ((1 - alpha)/alpha);
+
+// auto* channel
+//     short prevInput = buffer[channel][2];
+// }
+
+// just kind of adds buzz, needs white noise
+// float applyNoise(float in, float noiseAmt) {
+//     return in + ((rand()/RAND_MAX) * noiseAmt - (2*noiseAmt));
+// } 
 
 // converts ms to (most accurate, typically won't be exact) number of samples
 int sizeInSamples(int msecs) {
     return (int) (srate * ((float) msecs/1000));
 }
 
+/* 
+Parallelization approches:
+OMP
+Interleaving samples
+Work queue (id numbers to put back into buffer)
+Busy/sleepy wait ^--
+*/
+
+// float mapDistDw(float dw, float dist) {
+//     // return 1/dist + ((1 - 1/dist) * dw);
+
+//     // = 1/dist + dw - dw/dist
+//     // = 1-dw/dist + dw
+// }
+
 // TODO: Make based on numIns
 queue<float> delayBuffers[2];
+float dist = 3.0f;
 
 void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midiMessages)
 {
+    // timing help (library reccomendation) from: https://stackoverflow.com/questions/11062804/measuring-the-runtime-of-a-c-code
+    auto start = chrono::system_clock::now();
+
     juce::ignoreUnused (midiMessages);
 
     juce::ScopedNoDenormals noDenormals;
@@ -198,35 +309,61 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // vector<queue<float>> delayBuffers;
 
 
+        // cout << omp_get_thread_num;
+
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
   
     int maxDelaySize = sizeInSamples(*delay);
+
+    downSample(buffer, totalNumInputChannels, 16);
     
-    // (int) getSampleRate()/2;
+    // omp_set_num_threads(4);
+    
+    // cout << omp_get_thread_num;
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
         juce::ignoreUnused(channelData);
       
-        for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-            if (delayBuffers[channel].size() >= maxDelaySize) {
-                // add delayed sound, push back into buffer
-                float out = delayBuffers[channel].front() * FEEDBACK;
-                // TODO: out = applyEffect(out, effectName)
-                // out = applyGain(out, 3); 
-                channelData[sample] += out;
+        if (!*bypass) {
+            // #pragma omp parallel for // like 163 compared to 166 serial on one run, either i did this wrong or theres like no difference
+            for (int sample = 0; sample < buffer.getNumSamples(); sample++){
+                // cout << omp_get_thread_num << "\n";
+                if (delayBuffers[channel].size() >= maxDelaySize) {
+                    // add delayed sound, push back into buffer
+                    float out = delayBuffers[channel].front() * FEEDBACK;
+                    // bit_reduction(&out, 8);
 
-                // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
-                // might be a better idea to take away two or three each iteration
-                while (delayBuffers[channel].size() > maxDelaySize)
-                    delayBuffers[channel].pop();
+                    // applyDistortion(&out, dist);
+                    // applyGain(&out, 1);
+                    // TODO: out = applyEffect(out, effectName)
+                    // out = applyNoise(out, 0.25f); 
+                    // Using apply noise is making the output cut out after the delay time is up??
+
+                    channelData[sample] += out;
+
+                    // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
+                    // might be a better idea to take away two or three each iteration
+                    while (delayBuffers[channel].size() > maxDelaySize)
+                        delayBuffers[channel].pop();
+                }
+                delayBuffers[channel].push(channelData[sample]);
             }
-            delayBuffers[channel].push(channelData[sample]);
+        if (*dist_dw > 0 && *dist_ramp > 0)
+            dist += *dist_ramp;
         }
     }
-}
+    // if (!*bypass){
+    //     auto end = chrono::system_clock::now();
+    //     auto elapsed =  end - start;
+    //     chrono::microseconds elapsedMillis = chrono::duration_cast< chrono::microseconds >(elapsed);
+    //     avgBlock += elapsedMillis;
+    //     avgCount++;
+    //     cout << avgBlock.count()/avgCount << "\n";
+    // }
+    }
 
 //==============================================================================
 bool AudioPluginAudioProcessor::hasEditor() const
@@ -250,6 +387,10 @@ void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     // juce::ignoreUnused (destData);
     juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
     juce::MemoryOutputStream(destData, true).writeInt(*delay);
+    juce::MemoryOutputStream(destData, true).writeFloat(*dist_ramp);
+    juce::MemoryOutputStream(destData, true).writeFloat(*dist_dw);
+    juce::MemoryOutputStream(destData, true).writeBool(*bypass);
+
 }
 
 void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -259,6 +400,9 @@ void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeI
     // juce::ignoreUnused (data, sizeInBytes);
     *feedback = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
     *delay = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readInt();
+    *dist_ramp = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
+    *dist_dw = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readFloat();
+    *bypass = juce::MemoryInputStream(data, static_cast<size_t> (sizeInBytes), false).readBool();
 
 }
 
