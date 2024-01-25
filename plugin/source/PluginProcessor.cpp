@@ -1,11 +1,15 @@
 #include "../include/Modular_Delay/PluginProcessor.h"
 #include "../include/Modular_Delay/PluginEditor.h"
+// #include "Effects.h"
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <queue>
 #include <vector>
 #include <math.h>
 #include <time.h>
 #include <chrono>
 #include <omp.h>
+#include <thread>
 
 using namespace std;
 
@@ -20,8 +24,13 @@ juce::AudioParameterFloat* dist_dw;
 juce::AudioParameterBool* bypass;
 
 chrono::microseconds avgBlock;
+std::mutex mutex;
 int avgCount = 0;
 double srate;
+
+int purge_count = 0;
+// Maybe make a bit higher
+const int PURGE_LIMIT = 200;
 
 //==============================================================================
 AudioPluginAudioProcessor::AudioPluginAudioProcessor()
@@ -72,7 +81,6 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
         "Bypass",
         false
     ));
-
     // Define threads here
 }
 
@@ -187,14 +195,24 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
   #endif
 }
 
+// just kind of adds buzz, needs white noise
+// float applyNoise(float in, float noiseAmt) {
+//     return in + ((rand()/RAND_MAX) * noiseAmt - (2*noiseAmt));
+// } 
+
+// converts ms to (most accurate, typically won't be exact) number of samples
+int sizeInSamples(int msecs) {
+    return (int) (srate * ((float) msecs/1000));
+}
+
 // Input: in (signal), gainAmtDB (desired gain in DB)
 void applyGain(float *out, float gainAmtDB) {
     // Seems to increase it by double the desired gain.......
     *out = (float) (gainAmtDB >= 0 ? *out * pow(10, gainAmtDB/10) : *out / pow(10, -gainAmtDB/10));
 }
 
-void applyDistortion(float *out, float dist) {
-    *out = tanh((1 - *dist_dw + dist * *dist_dw) * *out);
+void applyDistortion(float *out, float dist, float dw) {
+    *out = tanh((1 - dw + dist * dw) * *out);
 }
 
 // Quantizes using modulo
@@ -209,7 +227,6 @@ void bit_reduction(float *out, int num_bits){
 }
 
 void downSample(juce::AudioBuffer<float>& buffer, int numIn, int factor) {
-
     float prevSample[2];
 
     for (int channel = 0; channel < numIn; ++channel)
@@ -229,24 +246,30 @@ void downSample(juce::AudioBuffer<float>& buffer, int numIn, int factor) {
 
 }
 
-// void applyLowPass(juce::AudioBuffer<float>& buffer, int channel, double alpha) {
-//     double speriod = 1/srate;
-//     double RC = speriod * ((1 - alpha)/alpha);
+// translated from https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+void applyLowPass(juce::AudioBuffer<float>& buffer, double sample_rate, int numIn, double freq) {
+
+    double speriod = 1/sample_rate;
+    double alpha = (float) (2*M_PI*speriod*freq)/(2*M_PI*speriod*freq + 1);
+
+    for (int channel = 0; channel < numIn; channel++) {
+        auto* channelData = buffer.getWritePointer(channel);
+        juce::ignoreUnused(channelData);
+
+        channelData[0] *= (float) alpha;
+
+
+        for (int sample = 1; sample < buffer.getNumSamples(); sample++) {
+            channelData[sample] = (float) (channelData[sample-1] + alpha * (channelData[sample] - channelData[sample-1]));
+            // (alpha * channelData[sample] + (1-alpha) * channelData[sample-1]);
+        }
+    }
+}
+
 
 // auto* channel
 //     short prevInput = buffer[channel][2];
 // }
-
-// just kind of adds buzz, needs white noise
-// float applyNoise(float in, float noiseAmt) {
-//     return in + ((rand()/RAND_MAX) * noiseAmt - (2*noiseAmt));
-// } 
-
-// converts ms to (most accurate, typically won't be exact) number of samples
-int sizeInSamples(int msecs) {
-    return (int) (srate * ((float) msecs/1000));
-}
-
 /* 
 Parallelization approches:
 OMP
@@ -279,7 +302,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // By default, numIns is 2
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
-    // float FEEDBACK = *feedback;
+    float FEEDBACK = *feedback;
 
     // In case we have more outputs than inputs, this code clears any output
     // channels that didn't contain input data, (because these aren't
@@ -306,7 +329,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // cout << "Here\n";
     // Retool to take user (knob?) input in future
   
-    // int maxDelaySize = sizeInSamples(*delay);
+    int maxDelaySize = sizeInSamples(*delay);
 
     // downSample(buffer, totalNumInputChannels, 16);
     
@@ -320,6 +343,9 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // omp parallel for overhead at this level much slower........ 166 muS serial vs ~ 500 muS parallel
     // #pragma omp parallel for
+
+    // applyLowPass(buffer, getSampleRate(), totalNumInputChannels, 500.0);
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* channelData = buffer.getWritePointer(channel);
@@ -327,29 +353,39 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
       
         if (!*bypass) {
             for (int sample = 0; sample < buffer.getNumSamples(); sample++){
-                bit_reduction(&channelData[sample], 6);
-                // if (delayBuffers[channel].size() >= maxDelaySize) {
-                //     // add delayed sound, push back into buffer
-                //     float out = delayBuffers[channel].front() * FEEDBACK;
-                //     // bit_reduction(&out, 8);
+                // bit_reduction(&channelData[sample], 6);
+                if (delayBuffers[channel].size() >= maxDelaySize) {
+                    // add delayed sound, push back into buffer
+                    float out = delayBuffers[channel].front() * FEEDBACK;
+                    // bit_reduction(&out, 8);
 
-                //     // applyDistortion(&out, dist);
-                //     // applyGain(&out, 1);
-                //     // TODO: out = applyEffect(out, effectName)
-                //     // out = applyNoise(out, 0.25f); 
-                //     // Using apply noise is making the output cut out after the delay time is up??
+                    // applyDistortion(&out, dist, *dist_dw);
+                    // applyGain(&out, 1);
+                    // TODO: out = applyEffect(out, effectName)
+                    // out = applyNoise(out, 0.25f); 
+                    // Using apply noise is making the output cut out after the delay time is up??
 
-                //     channelData[sample] += out;
+                    channelData[sample] += out;
 
-                //     // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
-                //     // might be a better idea to take away two or three each iteration
-                //     while (delayBuffers[channel].size() > maxDelaySize)
-                //         delayBuffers[channel].pop();
-                // }
-                // delayBuffers[channel].push(channelData[sample]);
+                    // Helps with changing the parameter for delay time, otherwise the buffer just stays full because one more is added each time,
+                    // might be a better idea to take away two or three each iteration
+
+                    // avoids long pauses when changing the delay buffer and windows of samples that would otherwise get clogged in the delay buffer (e.g. with a check like dBuff[size] > max + 5)
+                    while (delayBuffers[channel].size() > maxDelaySize) {
+                        if (purge_count < PURGE_LIMIT) {
+                            delayBuffers[channel].pop();
+                            purge_count++;
+                        }
+                        else {
+                            purge_count = 0;
+                            break;
+                        }
+                    }
+                }
+                delayBuffers[channel].push(channelData[sample]);
             }
-        // if (*dist_dw > 0 && *dist_ramp > 0)
-        //     dist += *dist_ramp;
+        if (*dist_dw > 0 && *dist_ramp > 0)
+            dist += *dist_ramp;
         }
     }
     // if (!*bypass){
