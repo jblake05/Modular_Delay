@@ -1,0 +1,1 @@
+clang-tidy ./plugin/source/*.cpp --checks=cppcoreguidelines || clang-format ./plugin/source/*.cpp -i

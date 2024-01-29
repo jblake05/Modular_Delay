@@ -4,7 +4,6 @@ set(OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/out)
 
 project(AudioPlugin VERSION 0.1.0)
 
-
 juce_add_plugin(${PROJECT_NAME}    
     IS_SYNTH FALSE
     COMPANY_NAME Jeff Blake
