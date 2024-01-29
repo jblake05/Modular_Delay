@@ -208,26 +208,51 @@ void downSample(juce::AudioBuffer<float> &buffer, int numIn, int factor) {
   }
 }
 
-// translated from
-// https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-void applyLowPass(juce::AudioBuffer<float> &buffer, double sample_rate,
-                  int numIn, double freq) {
+// translated from basic, changing Hamming window to Blackman for better freq response and added conversion b/t Hz and other frequency unit
+// https://www.analog.com/media/en/technical-documentation/dsp-book/dsp_book_Ch16.pdf
+void applyLowPass(juce::AudioBuffer<float> &buffer, int numIn) {
 
-  double speriod = 1 / sample_rate;
-  double alpha =
-      (float)(2 * M_PI * speriod * freq) / (2 * M_PI * speriod * freq + 1);
+  const int wLength = 100;
+  float window[wLength] = {};
+
+  // TODO: convert from hz to fraction of the sampling rate
+  float cutoff = 0.14f;
+
+  // init window
+  for (int i = 0; i < wLength; i++) {
+    if (i == wLength/2)
+      window[i] = (float) (2*M_PI*cutoff);
+    else
+      window[i] = (float) (sin(2*M_PI*cutoff*(i-wLength/2))/(i-wLength/2));
+    window[i] *= (float) (0.42 - 0.5*cos(2*M_PI*i/wLength) + 0.08*cos(4*M_PI*i/wLength));
+  }
+  
+  float sum = 0;
+  for (int i = 0; i < wLength; i++) {
+    sum += window[i];
+  }
+
+  for (int i = 0; i < wLength; i++) {
+    window[i] /= sum;
+  }
+
+  juce::AudioBuffer<float> inputBuffer;
+
+  for (int channel = 0; channel < numIn; channel++) {
+    inputBuffer.copyFrom(channel, 0, buffer, channel, 0, buffer.getNumSamples());
+  }
 
   for (int channel = 0; channel < numIn; channel++) {
     auto *channelData = buffer.getWritePointer(channel);
-    juce::ignoreUnused(channelData);
+    // auto *input = buffer.getReadPointer(channel);
+    auto *input = inputBuffer.getReadPointer(channel);
+    // juce::ignoreUnused(channelData);
 
-    channelData[0] *= (float)alpha;
-
-    for (int sample = 1; sample < buffer.getNumSamples(); sample++) {
-      channelData[sample] =
-          (float)(channelData[sample - 1] +
-                  alpha * (channelData[sample] - channelData[sample - 1]));
-      // (alpha * channelData[sample] + (1-alpha) * channelData[sample-1]);
+    for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+      channelData[sample] = 0;
+      for (int i = 0; i < wLength; i++) {
+        channelData[sample] += input[sample - i] * window[i];
+      }
     }
   }
 }
@@ -267,7 +292,7 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // By default, numIns is 2
   auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
-  float FEEDBACK = *feedback;
+  // float FEEDBACK = *feedback;
 
   // In case we have more outputs than inputs, this code clears any output
   // channels that didn't contain input data, (because these aren't
@@ -293,7 +318,7 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // cout << "Here\n";
   // Retool to take user (knob?) input in future
 
-  int maxDelaySize = sizeInSamples(*delay);
+  // int maxDelaySize = sizeInSamples(*delay);
 
   // downSample(buffer, totalNumInputChannels, 16);
 
@@ -308,59 +333,59 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // omp parallel for overhead at this level much slower........ 166 muS serial
   // vs ~ 500 muS parallel #pragma omp parallel for
 
-  // applyLowPass(buffer, getSampleRate(), totalNumInputChannels, 500.0);
+  applyLowPass(buffer, totalNumInputChannels);
 
-  for (int channel = 0; channel < totalNumInputChannels; ++channel) {
-    auto *channelData = buffer.getWritePointer(channel);
-    juce::ignoreUnused(channelData);
+  // for (int channel = 0; channel < totalNumInputChannels; ++channel) {
+  //   auto *channelData = buffer.getWritePointer(channel);
+  //   juce::ignoreUnused(channelData);
 
-    if (!*bypass) {
-      for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
-        // bit_reduction(&channelData[sample], 6);
-        if (delayBuffers[channel].size() >= maxDelaySize) {
-          // add delayed sound, push back into buffer
-          float out = delayBuffers[channel].front() * FEEDBACK;
-          // bit_reduction(&out, 8);
+  //   if (!*bypass) {
+  //     for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+  //       // bit_reduction(&channelData[sample], 6);
+  //       if (delayBuffers[channel].size() >= maxDelaySize) {
+  //         // add delayed sound, push back into buffer
+  //         float out = delayBuffers[channel].front() * FEEDBACK;
+  //         // bit_reduction(&out, 8);
 
-          // applyDistortion(&out, dist, *dist_dw);
-          // applyGain(&out, 1);
-          // TODO: out = applyEffect(out, effectName)
-          // out = applyNoise(out, 0.25f);
-          // Using apply noise is making the output cut out after the delay time
-          // is up??
+  //         // applyDistortion(&out, dist, *dist_dw);
+  //         // applyGain(&out, 1);
+  //         // TODO: out = applyEffect(out, effectName)
+  //         // out = applyNoise(out, 0.25f);
+  //         // Using apply noise is making the output cut out after the delay time
+  //         // is up??
 
-          channelData[sample] += out;
+  //         channelData[sample] += out;
 
-          // Helps with changing the parameter for delay time, otherwise the
-          // buffer just stays full because one more is added each time, might
-          // be a better idea to take away two or three each iteration
+  //         // Helps with changing the parameter for delay time, otherwise the
+  //         // buffer just stays full because one more is added each time, might
+  //         // be a better idea to take away two or three each iteration
 
-          // avoids long pauses when changing the delay buffer and windows of
-          // samples that would otherwise get clogged in the delay buffer (e.g.
-          // with a check like dBuff[size] > max + 5)
-          while (delayBuffers[channel].size() > maxDelaySize) {
-            if (purge_count < PURGE_LIMIT) {
-              delayBuffers[channel].pop();
-              purge_count++;
-            } else {
-              purge_count = 0;
-              break;
-            }
-          }
-        }
-        delayBuffers[channel].push(channelData[sample]);
-      }
-      if (*dist_dw > 0 && *dist_ramp > 0)
-        dist += *dist_ramp;
-    }
-  }
-  // if (!*bypass){
-  //     auto end = chrono::system_clock::now();
-  //     auto elapsed =  end - start;
-  //     chrono::microseconds elapsedMillis = chrono::duration_cast<
-  //     chrono::microseconds >(elapsed); avgBlock += elapsedMillis; avgCount++;
-  //     cout << avgBlock.count()/avgCount << "\n";
+  //         // avoids long pauses when changing the delay buffer and windows of
+  //         // samples that would otherwise get clogged in the delay buffer (e.g.
+  //         // with a check like dBuff[size] > max + 5)
+  //         while (delayBuffers[channel].size() > maxDelaySize) {
+  //           if (purge_count < PURGE_LIMIT) {
+  //             delayBuffers[channel].pop();
+  //             purge_count++;
+  //           } else {
+  //             purge_count = 0;
+  //             break;
+  //           }
+  //         }
+  //       }
+  //       delayBuffers[channel].push(channelData[sample]);
+  //     }
+  //     if (*dist_dw > 0 && *dist_ramp > 0)
+  //       dist += *dist_ramp;
+  //   }
   // }
+  // // if (!*bypass){
+  // //     auto end = chrono::system_clock::now();
+  // //     auto elapsed =  end - start;
+  // //     chrono::microseconds elapsedMillis = chrono::duration_cast<
+  // //     chrono::microseconds >(elapsed); avgBlock += elapsedMillis; avgCount++;
+  // //     cout << avgBlock.count()/avgCount << "\n";
+  // // }
 }
 
 //==============================================================================
