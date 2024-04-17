@@ -68,28 +68,28 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
               .withOutput("Output", juce::AudioChannelSet::stereo(), true)
 #endif
       ) {
-  // // documented (along with get/set stateInformation) here:
-  // // https://docs.juce.com/master/tutorial_audio_parameter.html
-  // addParameter(feedback = new juce::AudioParameterFloat("feedback", "Feedback", 0.0f, .95f, 0.5f));
-  // addParameter(delay = new juce::AudioParameterInt("delay", "Delay", 10, 2000, 500));
-  // addParameter(delay_bypass = new juce::AudioParameterBool("del_bypass", "Delay Bypass", false));
+  // documented (along with get/set stateInformation) here:
+  // https://docs.juce.com/master/tutorial_audio_parameter.html
+  addParameter(feedback = new juce::AudioParameterFloat("feedback", "Feedback", 0.0f, .95f, 0.5f));
+  addParameter(delay = new juce::AudioParameterInt("delay", "Delay", 10, 2000, 500));
+  addParameter(delay_bypass = new juce::AudioParameterBool("del_bypass", "Delay Bypass", false));
   
-  // addParameter(dist_start = new juce::AudioParameterFloat("dStart", "Distortion Start", 0.0f, 100.0f, 0.5f));
-  // addParameter(ramp = new juce::AudioParameterFloat("DRamp", "Distortion Ramp", 0.0f, 0.1f, 0.01f));
-  // addParameter(dist_dryWet = new juce::AudioParameterFloat("DistDW", "Distortion Dry/Wet", 0.0f, 1.0f, 0.0f));
-  // addParameter(dist_bypass = new juce::AudioParameterBool("dist_bypass", "Distortion Bypass", false));
-  // dist = *dist_start;
+  addParameter(dist_start = new juce::AudioParameterFloat("dStart", "Distortion Start", 0.0f, 100.0f, 0.5f));
+  addParameter(ramp = new juce::AudioParameterFloat("DRamp", "Distortion Ramp", 0.0f, 0.1f, 0.01f));
+  addParameter(dist_dryWet = new juce::AudioParameterFloat("DistDW", "Distortion Dry/Wet", 0.0f, 1.0f, 0.0f));
+  addParameter(dist_bypass = new juce::AudioParameterBool("dist_bypass", "Distortion Bypass", false));
+  dist = *dist_start;
 
-  // addParameter(downSrate = new juce::AudioParameterInt("DSRate", "Downsample Rate", 1024, 48000, 48000));
-  // addParameter(bitStart = new juce::AudioParameterInt("bitStart", "Bit Start", 0, 32, 32));
-  // addParameter(bitRamp = new juce::AudioParameterFloat("bRamp", "Bit Ramp", 0.0f, 4.0f, 1.0f));
-  // addParameter(bc_dryWet = new juce::AudioParameterFloat("BCDW", "Bitcrush Dry/Wet", 0.0f, 1.0f, 0.0f));
-  // addParameter(bit_bypass = new juce::AudioParameterBool("bit_bypass", "Bitcrush Bypass", false));
-  // bitDepth = *bitStart;
-  // bitDepthFloat = (float) *bitStart;
+  addParameter(downSrate = new juce::AudioParameterInt("DSRate", "Downsample Rate", 1024, 48000, 48000));
+  addParameter(bitStart = new juce::AudioParameterInt("bitStart", "Bit Start", 0, 32, 32));
+  addParameter(bitRamp = new juce::AudioParameterFloat("bRamp", "Bit Ramp", 0.0f, 4.0f, 1.0f));
+  addParameter(bc_dryWet = new juce::AudioParameterFloat("BCDW", "Bitcrush Dry/Wet", 0.0f, 1.0f, 0.0f));
+  addParameter(bit_bypass = new juce::AudioParameterBool("bit_bypass", "Bitcrush Bypass", false));
+  bitDepth = *bitStart;
+  bitDepthFloat = (float) *bitStart;
   
-  // addParameter(fcut = new juce::AudioParameterInt("fcut", "Filter Cutoff", 100, 20000, 20000));
-  // addParameter(filter_bypass = new juce::AudioParameterBool("filter_bypass", "Filter Bypass", false));
+  addParameter(fcut = new juce::AudioParameterInt("fcut", "Filter Cutoff", 100, 20000, 20000));
+  addParameter(filter_bypass = new juce::AudioParameterBool("filter_bypass", "Filter Bypass", false));
 
   // distortion = Distort::Distort(ramp, dist_dryWet);
   // bitcrush = Bitcrush::Bitcrush(downSrate, bitDepth, bc_dryWet);
@@ -194,31 +194,6 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported(
 #endif
 }
 
-juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::paramLayout() {
-  juce::AudioProcessorValueTreeState::ParameterLayout layout;
-  // documented (along with get/set stateInformation) here:
-  // https://docs.juce.com/master/tutorial_audio_parameter.html
-  layout.add(std::make_unique<juce::AudioParameterFloat>("feedback", "Feedback", 0.0f, .95f, 0.5f));
-  layout.add(std::make_unique<juce::AudioParameterInt>("delay", "Delay", 10, 2000, 500));
-  layout.add(std::make_unique<juce::AudioParameterBool>("del_bypass", "Delay Bypass", false));
-  
-  layout.add(std::make_unique<juce::AudioParameterFloat>("dStart", "Distortion Start", 0.0f, 100.0f, 0.5f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("dRamp", "Distortion Ramp", 0.0f, 0.1f, 0.01f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("DDW", "Distortion Dry/Wet", 0.0f, 1.0f, 0.0f));
-  layout.add(std::make_unique<juce::AudioParameterBool>("dist_bypass", "Distortion Bypass", false));
-
-  layout.add(std::make_unique<juce::AudioParameterInt>("DSRate", "Downsample Rate", 1024, 48000, 48000));
-  layout.add(std::make_unique<juce::AudioParameterInt>("bStart", "Bit Start", 0, 32, 32));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("bRamp", "Bit Ramp", 0.0f, 4.0f, 1.0f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("BCDW", "Bitcrush Dry/Wet", 0.0f, 1.0f, 0.0f));
-  layout.add(std::make_unique<juce::AudioParameterBool>("bit_bypass", "Bitcrush Bypass", false));
-  
-  layout.add(std::make_unique<juce::AudioParameterInt>("fcut", "Filter Cutoff", 100, 20000, 20000));
-  layout.add(std::make_unique<juce::AudioParameterBool>("filter_bypass", "Filter Bypass", false));
-
-  return layout;
-}
-
 // just kind of adds buzz, needs white noise
 // float applyNoise(float in, float noiseAmt) {
 //     return in + ((rand()/RAND_MAX) * noiseAmt - (2*noiseAmt));
@@ -235,8 +210,7 @@ void applyGain(float *out, float gainAmtDB) {
 }
 
 float applyDistortion(float out) {
-  float dist_dryWet = treeState.rawParameterValue("DDW")->load(); 
-  return tanh((1 - dist_dryWet + dist * dist_dryWet) * out);
+  return tanh((1 - *dist_dryWet + dist * *dist_dryWet) * out);
 }
 
 // Quantizes using modulo
@@ -386,23 +360,8 @@ void applyLowPass(juce::AudioBuffer<float> &buffer, int numIn, int fc) {
 
 }
 
-void fillRamp(juce::AudioBuffer<float> &buffer, int numIn) {
-    for (int channel = 0; channel < numIn; ++channel) {
-    auto *channelData = buffer.getWritePointer(channel);
-    juce::ignoreUnused(channelData);
-
-    for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
-      channelData[sample] = (float) sample/buffer.getNumSamples();
-    }
-  }
-}
-
 void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                              juce::MidiBuffer &midiMessages) {
-
-  dist = treeState.getRawParameterValue("dStart")->load();
-  bitDepth = treeState.getRawParameterValue("bStart")->load();
-  bitDepthFloat = (float) treeState.getRawParameterValue(bStart)->load();
   // timing help (library reccomendation) from:
   // https://stackoverflow.com/questions/11062804/measuring-the-runtime-of-a-c-code
   auto start = chrono::system_clock::now();
@@ -414,7 +373,7 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
   
-  float FEEDBACK = treeState.getRawParameterValue("feedback")->load();
+  float FEEDBACK = *feedback;
   static vector<queue<float>> delayBuffers(totalNumInputChannels);
 
   // counts samples for effects timing purposes
@@ -441,11 +400,11 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // bitcrush(buffer, totalNumInputChannels);
 
   // Retool to take user (knob?) input in future
-  int maxDelaySize = sizeInSamples(treeState.getRawParameterValue("delay")->load());
+  int maxDelaySize = sizeInSamples(*delay);
 
   // change to vector with numIn
   float prevSample[2];
-  float factor = (float) srate / treeState.getRawParameterValue("DSRate")->load();
+  float factor = (float) srate / *downSrate;
 
   // for (int channel = 0; channel < totalNumInputChannels; ++channel) {
   //   auto *channelData = buffer.getWritePointer(channel);
@@ -453,20 +412,9 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   //     channelData[sample] = 1.0f/384 * sample;
   //   }
   // }
-  bool f_bypass = treeState.getRawParameterValue("filter_bypass")->load();
-  bool b_bypass = treeState.getRawParameterValue("bit_bypass")->load();
-  bool di_bypass = treeState.getRawParameterValue("dist_bypass")->load();
-  bool de_bypass = treeState.getRawParameterValue("del_bypass")->load();
 
-  int bitStart = treeState.getRawParameterValue("bStart")->load();
-  float bitRamp = treeState.getRawParameterValue("bRamp")->load();
-
-  float distStart = treeState.getRawParameterValue("dStart")->load();
-  float distDryWet = treeState.getRawParameterValue("DDW")->load();
-  float distRamp = treeState.getRawParameterValue("dRamp")->load();
-
-  if (!f_bypass)
-    applyLowPass(buffer, totalNumInputChannels, treeState.getRawParameterValue("fcut")->load());
+  if (!*filter_bypass)
+    applyLowPass(buffer, totalNumInputChannels, *fcut);
 
   for (int channel = 0; channel < totalNumInputChannels; ++channel) {
     auto *channelData = buffer.getWritePointer(channel);
@@ -475,7 +423,7 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
 
         // ==================================== Bitcrush
-        if (!b_bypass) {        
+        if (!*bit_bypass) {        
           if (factor > 1) {
             if (fmod((float) sample, factor) < 1) {
               prevSample[channel] = channelData[sample];
@@ -490,19 +438,19 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         // ==================================== End Bitcrush
 
         // ==================================== Distortion
-        if (!di_bypass)
-          channelData[sample] = applyDistortion(channelData[sample], distDryWet);
+        if (!*dist_bypass)
+          channelData[sample] = applyDistortion(channelData[sample]);
         // ==================================== End Distortion
 
         // ==================================== Delay
-        if (!de_bypass) {
+        if (!*delay_bypass) {
           if (delayBuffers[channel].size() >= maxDelaySize) {
             // add delayed sound, push back into buffer
             float out = delayBuffers[channel].front() * FEEDBACK;
-            if (!b_bypass)
+            if (!*bit_bypass)
               out = bit_reduction(out, bitDepth);
-            if (!di_bypass)
-              out = applyDistortion(out, distDryWet);
+            if (!*dist_bypass)
+              out = applyDistortion(out);
 
             channelData[sample] += out;
 
@@ -522,44 +470,43 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
           delayBuffers[channel].push(channelData[sample]);
 
           numSamples++;
-
-          if (!b_bypass && numSamples % maxDelaySize == 0 && bitDepthFloat - bitRamp > 1) {
+          if (!*bit_bypass && numSamples % maxDelaySize == 0 && bitDepthFloat - *bitRamp > 1) {
             // Iterate secondary parameters
-            bitDepthFloat -= bitRamp;
+            bitDepthFloat -= *bitRamp;
             if ((int) bitDepthFloat < bitDepth)
               bitDepth = (int) bitDepthFloat;
             numSamples = 0;
 
             // TODO: Add clamp parameter for how low the bitdepth can go
           }
-          if (distDryWet > 0 && distRamp > 0)
-            dist += distRamp;
         }        
         else if (!delayBuffers[channel].empty()){
           while (!delayBuffers[channel].empty()) { delayBuffers[channel].pop(); }
         }
         else {
-          if (bitDepth != bitStart) {
-            bitDepth = bitStart;
-            bitDepthFloat = (float) bitStart;
+          if (bitDepth != *bitStart) {
+            bitDepth = *bitStart;
+            bitDepthFloat = (float) *bitStart;
           }
-          if (dist != distStart)
-            dist = distStart;
+          if (dist != *dist_start)
+            dist = *dist_start;
           // cout << "Reset!\n\n";
         }
         // ==================================== End Delay
 
         // ==================================== Resets
-        if (b_bypass && bitDepth != bitStart) {
-          bitDepthFloat = (float) bitStart;
-          bitDepth = bitStart;
+        if (*bit_bypass && bitDepth != *bitStart) {
+          bitDepthFloat = (float) *bitStart;
+          bitDepth = *bitStart;
         }
-        if (d_bypass && dist != distStart) {
-          dist = distStart;
-          // cout << dist << "\n";
+        if (*dist_bypass && dist != *dist_start) {
+          dist = *dist_start;
+          cout << dist << "\n";
         }
         
       }
+    //   if (*dist_dw > 0 && *dist_ramp > 0)
+    //     dist += *dist_ramp;
   }
 
   // if (!*bypass){
@@ -588,76 +535,76 @@ void AudioPluginAudioProcessor::getStateInformation(
   // You should use this method to store your parameters in the memory block.
   // You could do that either as raw data, or use the XML or ValueTree classes
   // as intermediaries to make it easy to save and load complex data.
-  juce::ignoreUnused (destData);
-  // juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
-  // juce::MemoryOutputStream(destData, true).writeInt(*delay);
-  // juce::MemoryOutputStream(destData, true).writeBool(*delay_bypass);
+  // juce::ignoreUnused (destData);
+  juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
+  juce::MemoryOutputStream(destData, true).writeInt(*delay);
+  juce::MemoryOutputStream(destData, true).writeBool(*delay_bypass);
 
-  // juce::MemoryOutputStream(destData, true).writeFloat(*dist_start);
-  // juce::MemoryOutputStream(destData, true).writeFloat(*ramp); *****************************************
-  // juce::MemoryOutputStream(destData, true).writeFloat(*dist_dryWet); **********************************
-  // juce::MemoryOutputStream(destData, true).writeBool(*dist_bypass);
+  juce::MemoryOutputStream(destData, true).writeFloat(*dist_start);
+  juce::MemoryOutputStream(destData, true).writeFloat(*ramp);
+  juce::MemoryOutputStream(destData, true).writeFloat(*dist_dryWet);
+  juce::MemoryOutputStream(destData, true).writeBool(*dist_bypass);
 
-  // juce::MemoryOutputStream(destData, true).writeInt(*downSrate);
-  // juce::MemoryOutputStream(destData, true).writeInt(*bitStart);
-  // juce::MemoryOutputStream(destData, true).writeFloat(*bitRamp);
-  // juce::MemoryOutputStream(destData, true).writeFloat(*bc_dryWet); ************************************
-  // juce::MemoryOutputStream(destData, true).writeBool(*bit_bypass);
+  juce::MemoryOutputStream(destData, true).writeInt(*downSrate);
+  juce::MemoryOutputStream(destData, true).writeInt(*bitStart);
+  juce::MemoryOutputStream(destData, true).writeFloat(*bitRamp);
+  juce::MemoryOutputStream(destData, true).writeFloat(*bc_dryWet);
+  juce::MemoryOutputStream(destData, true).writeBool(*bit_bypass);
 
-  // juce::MemoryOutputStream(destData, true).writeInt(*fcut);
-  // juce::MemoryOutputStream(destData, true).writeBool(*filter_bypass);
+  juce::MemoryOutputStream(destData, true).writeInt(*fcut);
+  juce::MemoryOutputStream(destData, true).writeBool(*filter_bypass);
 }
 
 void AudioPluginAudioProcessor::setStateInformation(const void *data,
                                                     int sizeInBytes) {
   // You should use this method to restore your parameters from this memory
   // block, whose contents will have been created by the getStateInformation()
-  call. juce::ignoreUnused (data, sizeInBytes);
-  // *feedback =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readFloat();
-  // *delay =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readInt();
-  // *delay_bypass =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readBool();
+  // call. juce::ignoreUnused (data, sizeInBytes);
+  *feedback =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *delay =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *delay_bypass =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
 
-  // *dist_start =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readFloat();
-  // *ramp =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readFloat();
-  // *dist_dryWet =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readFloat();
-  // *dist_bypass =
-  //       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readBool();
+  *dist_start =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *ramp =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *dist_dryWet =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *dist_bypass =
+        juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
   
-  // *downSrate =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readInt();
-  // *bitStart =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readInt();
-  // *bitRamp =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readFloat();
-  // *bc_dryWet =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readFloat();
-  // *bit_bypass = 
-  //       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readBool();
+  *downSrate =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *bitStart =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *bitRamp =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *bc_dryWet =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *bit_bypass = 
+        juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
 
-  // *fcut =
-  //     juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readInt();
-  // *filter_bypass =
-  //       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
-  //         .readBool();
+  *fcut =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *filter_bypass =
+        juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
 }
 
 //==============================================================================
