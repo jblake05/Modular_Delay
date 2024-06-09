@@ -17,11 +17,36 @@ using namespace std;
 Author: Jeff Blake <jtblake@middlebury.edu>
 */
 
+//============================================ Delay
 juce::AudioParameterFloat *feedback;
 juce::AudioParameterInt *delay;
-juce::AudioParameterFloat *dist_ramp;
-juce::AudioParameterFloat *dist_dw;
-juce::AudioParameterBool *bypass;
+juce::AudioParameterBool *delay_bypass;
+//============================================ End Delay
+
+//============================================ Distortion
+juce::AudioParameterFloat* dist_start;
+juce::AudioParameterFloat* ramp;
+juce::AudioParameterFloat* dist_dryWet;
+juce::AudioParameterBool *dist_bypass;
+
+float dist;
+//============================================ End Distortion
+
+//============================================ Bitcrush
+juce::AudioParameterInt* downSrate;
+juce::AudioParameterInt* bitStart;
+juce::AudioParameterFloat* bitRamp;
+juce::AudioParameterFloat* bc_dryWet;
+juce::AudioParameterBool *bit_bypass;
+
+int bitDepth;
+float bitDepthFloat;
+//============================================ End Bitcrush
+
+//============================================ Lowpass
+juce::AudioParameterInt* fcut;
+juce::AudioParameterBool *filter_bypass;
+//============================================ End Lowpass
 
 chrono::microseconds avgBlock;
 std::mutex mutex;
@@ -45,20 +70,29 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
       ) {
   // documented (along with get/set stateInformation) here:
   // https://docs.juce.com/master/tutorial_audio_parameter.html
-  addParameter(feedback = new juce::AudioParameterFloat("feedback", "Feedback",
-                                                        0.0f, .95f, 0.5f));
+  addParameter(feedback = new juce::AudioParameterFloat("feedback", "Feedback", 0.0f, .95f, 0.5f));
+  addParameter(delay = new juce::AudioParameterInt("delay", "Delay", 10, 2000, 500));
+  addParameter(delay_bypass = new juce::AudioParameterBool("del_bypass", "Delay Bypass", false));
+  
+  addParameter(dist_start = new juce::AudioParameterFloat("dStart", "Distortion Start", 0.0f, 100.0f, 0.5f));
+  addParameter(ramp = new juce::AudioParameterFloat("DRamp", "Distortion Ramp", 0.0f, 0.1f, 0.01f));
+  addParameter(dist_dryWet = new juce::AudioParameterFloat("DistDW", "Distortion Dry/Wet", 0.0f, 1.0f, 0.0f));
+  addParameter(dist_bypass = new juce::AudioParameterBool("dist_bypass", "Distortion Bypass", false));
+  dist = *dist_start;
 
-  addParameter(
-      delay = new juce::AudioParameterInt("delay", "Delay", 10, 2000, 500));
+  addParameter(downSrate = new juce::AudioParameterInt("DSRate", "Downsample Rate", 1024, 48000, 48000));
+  addParameter(bitStart = new juce::AudioParameterInt("bitStart", "Bit Start", 0, 32, 32));
+  addParameter(bitRamp = new juce::AudioParameterFloat("bRamp", "Bit Ramp", 0.0f, 4.0f, 1.0f));
+  addParameter(bc_dryWet = new juce::AudioParameterFloat("BCDW", "Bitcrush Dry/Wet", 0.0f, 1.0f, 0.0f));
+  addParameter(bit_bypass = new juce::AudioParameterBool("bit_bypass", "Bitcrush Bypass", false));
+  bitDepth = *bitStart;
+  bitDepthFloat = (float) *bitStart;
+  
+  addParameter(fcut = new juce::AudioParameterInt("fcut", "Filter Cutoff", 100, 20000, 20000));
+  addParameter(filter_bypass = new juce::AudioParameterBool("filter_bypass", "Filter Bypass", false));
 
-  addParameter(dist_ramp = new juce::AudioParameterFloat("d_ramp", "dist_ramp",
-                                                         0.0f, 0.1f, 0.01f));
-
-  addParameter(dist_dw = new juce::AudioParameterFloat("dist_dw", "dist_dw",
-                                                       0.0f, 1.0f, 0.1f));
-
-  addParameter(bypass =
-                   new juce::AudioParameterBool("bypass", "Bypass", false));
+  // distortion = Distort::Distort(ramp, dist_dryWet);
+  // bitcrush = Bitcrush::Bitcrush(downSrate, bitDepth, bc_dryWet);
   // Define threads here
 }
 
@@ -175,91 +209,166 @@ void applyGain(float *out, float gainAmtDB) {
                                 : *out / pow(10, -gainAmtDB / 10));
 }
 
-void applyDistortion(float *out, float dist, float dw) {
-  *out = tanh((1 - dw + dist * dw) * *out);
+float applyDistortion(float out) {
+  return tanh((1 - *dist_dryWet + dist * *dist_dryWet) * out);
 }
 
 // Quantizes using modulo
-void bit_reduction(float *out, int num_bits) {
+float bit_reduction(float out, int num_bits) {
   int steps = (int)pow(2, num_bits);
   float stepSize = (float)2 / steps;
-  *out -= fmod(*out, stepSize);
-
-  // cout << *out;
-  // *out = closestNum;
-  // cout << ", " << *out << "\n";
+  return out - fmod(out, stepSize);
 }
 
-void downSample(juce::AudioBuffer<float> &buffer, int numIn, int factor) {
-  float prevSample[2];
+// void bitcrush(juce::AudioBuffer<float> &buffer, int numIn) {
+//   static float prevSample[2];
 
-  for (int channel = 0; channel < numIn; ++channel) {
-    auto *channelData = buffer.getWritePointer(channel);
-    juce::ignoreUnused(channelData);
+//   float factor = (float) srate / *downSrate;
 
-    for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
-      if (factor != 1) {
-        if (sample % factor == 0)
-          prevSample[channel] = channelData[sample];
-        else
-          channelData[sample] = prevSample[channel];
-      }
-    }
+//   for (int channel = 0; channel < numIn; ++channel) {
+//     auto *channelData = buffer.getWritePointer(channel);
+//     juce::ignoreUnused(channelData);
+
+//     for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+//       if (factor > 1) {
+//         if (fmod((float) sample, factor) < 1) {
+//           // cout << sample << "\nfactor: " << factor << "\nfmod: " << fmod((float) sample, factor) << "\nsample: ";
+//           prevSample[channel] = channelData[sample];
+//         }
+//         // channelData[sample] = prevSample[channel] * (1 - *bc_dryWet) + bit_reduction(prevSample[channel], *bitDepth) * *bc_dryWet;
+//         channelData[sample] = bit_reduction(prevSample[channel], bitDepth);
+//       }
+//       else {
+//         // channelData[sample] = channelData[sample] * (1 - *bc_dryWet) + bit_reduction(channelData[sample], *bitDepth) * *bc_dryWet;
+//         channelData[sample] = bit_reduction(channelData[sample], bitDepth);
+//       }
+//     }
+//   }
+// }
+
+float sinc(float x) {
+    float a = (float) sin(M_PI*x);
+    float b = (float) M_PI*x;
+    return a/b;
+}
+
+// translated from basic, changing Hamming window to Blackman for better freq response and added conversion b/t Hz and other frequency unit
+// https://www.analog.com/media/en/technical-documentation/dsp-book/dsp_book_Ch16.pdf
+
+// Sample rate values in the set 96x + 128 fail (output silence) when lowpass occurs. 
+// Further, they are the only values where zeroes print in sinc (i.e. b = 0, div 0 error)
+// Seems to happen when wLength (numsamples*2/3) is odd......... 
+void applyLowPass(juce::AudioBuffer<float> &buffer, int numIn, int fc) {
+
+  // const int wLength = 64;
+  // float window[wLength] = {};
+  int wLength = 2 * buffer.getNumSamples() / 3;
+  vector<float> window(wLength);
+  // vector<vector<float>> window(2)
+
+  // hold over 
+  // TODO: input num stereo
+  static vector<vector<float>> preBuffer(numIn);
+
+  for (int i = 0; i < numIn; i++) {
+    preBuffer[i].resize(wLength);
   }
-}
+  
+  // [wLength] = {};
 
-// translated from
-// https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-void applyLowPass(juce::AudioBuffer<float> &buffer, double sample_rate,
-                  int numIn, double freq) {
 
-  double speriod = 1 / sample_rate;
-  double alpha =
-      (float)(2 * M_PI * speriod * freq) / (2 * M_PI * speriod * freq + 1);
+  float cutoff = (float) fc / (float) srate;
+  // cutoff+=1.0;
+
+  
+  // buffer.getWritePointer(0);
+
+  // cout << srate << ", " << fc << "\n";
+
+// sinc(2fc(n−(N−1)/2)) = sin(2*pi*fc*(n-(N-1)/2))/(2*pi*fc*(n−(N−1)/2))
+  // init window
+  for (int i = 0; i < wLength; i++) {
+    if (i == wLength/2)
+      window[i] = (float) sin(2*M_PI*cutoff);
+    else
+      window[i] = sinc(2*cutoff*(i - wLength/2.0f));
+    window[i] *= (float) (0.42 - 0.5*cos(2*M_PI*i/wLength) + 0.08*cos(4*M_PI*i/wLength));
+
+    // if (i == wLength/2)
+    //   window[i] = (float) sin(2*M_PI*cutoff);
+    // else
+    //   window[i] = (float) (sin(2*M_PI*cutoff*(i-wLength/2))/(i-wLength/2));
+  }
+
+  float sum = 0;
+  for (int i = 0; i < wLength; i++) {
+    sum += window[i];
+  }
+
+  for (int i = 0; i < wLength; i++) {
+    window[i] /= sum;
+  }
+
+  // cout << "[";
+  // for (int i = 0 ; i < wLength; i++) { 
+  //   cout << window[i] << ", ";
+  // }
+  // cout << "]\n\n\n";
+
+  juce::AudioBuffer<float> inputBuffer(numIn, buffer.getNumSamples());
 
   for (int channel = 0; channel < numIn; channel++) {
     auto *channelData = buffer.getWritePointer(channel);
+
+    inputBuffer.copyFrom(channel, 0, buffer, channel, 0, buffer.getNumSamples());
+    auto *input = inputBuffer.getReadPointer(channel);
     juce::ignoreUnused(channelData);
 
-    channelData[0] *= (float)alpha;
+    for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+      channelData[sample] = 0;
+      for (int i = 0; i < wLength; i++) {
+        if (sample < i) {
+          // cout << "Sample: " << sample << ", prebuffer index: " << wLength + (sample - i) << ", i: " << i << "\n\n";
+          channelData[sample] = channelData[sample] + preBuffer[channel][wLength + (sample - i)] * window[i];
+        }
+        else {
+          // cout << preBuffer[wLength + (sample - i)] << "input(head) <- \n";
+          // cout << "Sample: " << sample << ", sample - i: " << sample - i << ", i: " << i << "\n\n";
+          channelData[sample] = channelData[sample] + input[sample - i] * window[i];
+        }
+      }
+      // cout << input[sample] << "in(head) <- \n";
+      // cout << channelData[sample] << "out(head) <- \n";
+    }
 
-    for (int sample = 1; sample < buffer.getNumSamples(); sample++) {
-      channelData[sample] =
-          (float)(channelData[sample - 1] +
-                  alpha * (channelData[sample] - channelData[sample - 1]));
-      // (alpha * channelData[sample] + (1-alpha) * channelData[sample-1]);
+    // for (int sample = wLength; sample < buffer.getNumSamples(); sample++) {
+    //   channelData[sample] = 0;
+
+    //   for (int i = 0; i < wLength; i++) {
+    //     channelData[sample] = channelData[sample] + input[sample - i] * window[i];
+    //   }
+    //   // cout << input[sample] << "in(tail) <- \n";
+    //   // cout << channelData[sample] << "out(tail) <- \n";
+
+    // }
+
+    // for (int i = 0; i < wLength; i++) {
+    //   preBuffer[channel][i] = 0;
+    // }
+    
+    for (int sample = buffer.getNumSamples() - wLength; sample < buffer.getNumSamples(); sample++) {
+          preBuffer[channel][sample - (buffer.getNumSamples() - wLength)] = input[sample];
     }
   }
+
+
 }
-
-// auto* channel
-//     short prevInput = buffer[channel][2];
-// }
-/*
-Parallelization approches:
-OMP
-Interleaving samples
-Work queue (id numbers to put back into buffer)
-Busy/sleepy wait ^--
-*/
-
-// float mapDistDw(float dw, float dist) {
-//     // return 1/dist + ((1 - 1/dist) * dw);
-
-//     // = 1/dist + dw - dw/dist
-//     // = 1-dw/dist + dw
-// }
-
-// TODO: Make based on numIns
-queue<float> delayBuffers[2];
-float dist = 3.0f;
 
 void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                              juce::MidiBuffer &midiMessages) {
   // timing help (library reccomendation) from:
   // https://stackoverflow.com/questions/11062804/measuring-the-runtime-of-a-c-code
   auto start = chrono::system_clock::now();
-
   juce::ignoreUnused(midiMessages);
 
   juce::ScopedNoDenormals noDenormals;
@@ -267,7 +376,12 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // By default, numIns is 2
   auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
+  
   float FEEDBACK = *feedback;
+  static vector<queue<float>> delayBuffers(totalNumInputChannels);
+
+  // counts samples for effects timing purposes
+  static int numSamples = 0;
 
   // In case we have more outputs than inputs, this code clears any output
   // channels that didn't contain input data, (because these aren't
@@ -285,81 +399,126 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
   // Alternatively, you can process the samples with the channels
   // interleaved by keeping the same state.
 
-  // queue<float> delayBuffers[totalNumInputChannels];
-  // vector<queue<float>> delayBuffers;
+  // TODO: Currently separate from delay. Incorporate the sample and hold and bitcrush in the delay loop
+  // Probably just going to have to incorporate most of this (bitcrush, lowpass) directly into the loop and have toggle options
+  // bitcrush(buffer, totalNumInputChannels);
 
-  // cout << omp_get_thread_num;
-
-  // cout << "Here\n";
   // Retool to take user (knob?) input in future
-
   int maxDelaySize = sizeInSamples(*delay);
 
-  // downSample(buffer, totalNumInputChannels, 16);
+  // change to vector with numIn
+  float prevSample[2];
+  float factor = (float) srate / *downSrate;
 
-  // omp_set_num_threads(4);
-  // #pragma omp parallel
-  // {
-  //     cout << omp_get_thread_num() << "\n";
+  // for (int channel = 0; channel < totalNumInputChannels; ++channel) {
+  //   auto *channelData = buffer.getWritePointer(channel);
+  //   for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
+  //     channelData[sample] = 1.0f/384 * sample;
+  //   }
   // }
 
-  // cout << omp_get_thread_num;
-
-  // omp parallel for overhead at this level much slower........ 166 muS serial
-  // vs ~ 500 muS parallel #pragma omp parallel for
-
-  // applyLowPass(buffer, getSampleRate(), totalNumInputChannels, 500.0);
+  if (!*filter_bypass)
+    applyLowPass(buffer, totalNumInputChannels, *fcut);
 
   for (int channel = 0; channel < totalNumInputChannels; ++channel) {
     auto *channelData = buffer.getWritePointer(channel);
     juce::ignoreUnused(channelData);
 
-    if (!*bypass) {
       for (int sample = 0; sample < buffer.getNumSamples(); sample++) {
-        // bit_reduction(&channelData[sample], 6);
-        if (delayBuffers[channel].size() >= maxDelaySize) {
-          // add delayed sound, push back into buffer
-          float out = delayBuffers[channel].front() * FEEDBACK;
-          // bit_reduction(&out, 8);
 
-          // applyDistortion(&out, dist, *dist_dw);
-          // applyGain(&out, 1);
-          // TODO: out = applyEffect(out, effectName)
-          // out = applyNoise(out, 0.25f);
-          // Using apply noise is making the output cut out after the delay time
-          // is up??
-
-          channelData[sample] += out;
-
-          // Helps with changing the parameter for delay time, otherwise the
-          // buffer just stays full because one more is added each time, might
-          // be a better idea to take away two or three each iteration
-
-          // avoids long pauses when changing the delay buffer and windows of
-          // samples that would otherwise get clogged in the delay buffer (e.g.
-          // with a check like dBuff[size] > max + 5)
-          while (delayBuffers[channel].size() > maxDelaySize) {
-            if (purge_count < PURGE_LIMIT) {
-              delayBuffers[channel].pop();
-              purge_count++;
-            } else {
-              purge_count = 0;
-              break;
+        // ==================================== Bitcrush
+        if (!*bit_bypass) {        
+          if (factor > 1) {
+            if (fmod((float) sample, factor) < 1) {
+              prevSample[channel] = channelData[sample];
             }
+            channelData[sample] = bit_reduction(prevSample[channel], bitDepth);
+            // channelData[sample] = bit_reduction(prevSample[channel], *bitDepth);
+          }
+          else {
+            channelData[sample] = bit_reduction(channelData[sample], bitDepth);
           }
         }
-        delayBuffers[channel].push(channelData[sample]);
+        // ==================================== End Bitcrush
+
+        // ==================================== Distortion
+        if (!*dist_bypass)
+          channelData[sample] = applyDistortion(channelData[sample]);
+        // ==================================== End Distortion
+
+        // ==================================== Delay
+        if (!*delay_bypass) {
+          if (delayBuffers[channel].size() >= maxDelaySize) {
+            // add delayed sound, push back into buffer
+            float out = delayBuffers[channel].front() * FEEDBACK;
+            if (!*bit_bypass)
+              out = bit_reduction(out, bitDepth);
+            if (!*dist_bypass)
+              out = applyDistortion(out);
+
+            channelData[sample] += out;
+
+            // avoids long pauses when changing the delay buffer and windows of
+            // samples that would otherwise get clogged in the delay buffer (e.g.
+            // with a check like dBuff[size] > max + 5)
+            while (delayBuffers[channel].size() > maxDelaySize) {
+              if (purge_count < PURGE_LIMIT) {
+                delayBuffers[channel].pop();
+                purge_count++;
+              } else {
+                purge_count = 0;
+                break;
+              }
+            }
+          }
+          delayBuffers[channel].push(channelData[sample]);
+
+          numSamples++;
+          if (!*bit_bypass && numSamples % maxDelaySize == 0 && bitDepthFloat - *bitRamp > 1) {
+            // Iterate secondary parameters
+            bitDepthFloat -= *bitRamp;
+            if ((int) bitDepthFloat < bitDepth)
+              bitDepth = (int) bitDepthFloat;
+            numSamples = 0;
+
+            // TODO: Add clamp parameter for how low the bitdepth can go
+          }
+        }        
+        else if (!delayBuffers[channel].empty()){
+          while (!delayBuffers[channel].empty()) { delayBuffers[channel].pop(); }
+        }
+        else {
+          if (bitDepth != *bitStart) {
+            bitDepth = *bitStart;
+            bitDepthFloat = (float) *bitStart;
+          }
+          if (dist != *dist_start)
+            dist = *dist_start;
+          // cout << "Reset!\n\n";
+        }
+        // ==================================== End Delay
+
+        // ==================================== Resets
+        if (*bit_bypass && bitDepth != *bitStart) {
+          bitDepthFloat = (float) *bitStart;
+          bitDepth = *bitStart;
+        }
+        if (*dist_bypass && dist != *dist_start) {
+          dist = *dist_start;
+          // cout << dist << "\n";
+        }
+        
       }
-      if (*dist_dw > 0 && *dist_ramp > 0)
-        dist += *dist_ramp;
-    }
+    //   if (*dist_dw > 0 && *dist_ramp > 0)
+    //     dist += *dist_ramp;
   }
+
   // if (!*bypass){
-  //     auto end = chrono::system_clock::now();
-  //     auto elapsed =  end - start;
-  //     chrono::microseconds elapsedMillis = chrono::duration_cast<
-  //     chrono::microseconds >(elapsed); avgBlock += elapsedMillis; avgCount++;
-  //     cout << avgBlock.count()/avgCount << "\n";
+  //   auto end = chrono::system_clock::now();
+  //   auto elapsed =  end - start;
+  //   chrono::microseconds elapsedMillis = chrono::duration_cast<
+  //   chrono::microseconds >(elapsed); avgBlock += elapsedMillis; avgCount++;
+  //   cout << avgBlock.count()/avgCount << "\n";
   // }
 }
 
@@ -383,9 +542,21 @@ void AudioPluginAudioProcessor::getStateInformation(
   // juce::ignoreUnused (destData);
   juce::MemoryOutputStream(destData, true).writeFloat(*feedback);
   juce::MemoryOutputStream(destData, true).writeInt(*delay);
-  juce::MemoryOutputStream(destData, true).writeFloat(*dist_ramp);
-  juce::MemoryOutputStream(destData, true).writeFloat(*dist_dw);
-  juce::MemoryOutputStream(destData, true).writeBool(*bypass);
+  juce::MemoryOutputStream(destData, true).writeBool(*delay_bypass);
+
+  juce::MemoryOutputStream(destData, true).writeFloat(*dist_start);
+  juce::MemoryOutputStream(destData, true).writeFloat(*ramp);
+  juce::MemoryOutputStream(destData, true).writeFloat(*dist_dryWet);
+  juce::MemoryOutputStream(destData, true).writeBool(*dist_bypass);
+
+  juce::MemoryOutputStream(destData, true).writeInt(*downSrate);
+  juce::MemoryOutputStream(destData, true).writeInt(*bitStart);
+  juce::MemoryOutputStream(destData, true).writeFloat(*bitRamp);
+  juce::MemoryOutputStream(destData, true).writeFloat(*bc_dryWet);
+  juce::MemoryOutputStream(destData, true).writeBool(*bit_bypass);
+
+  juce::MemoryOutputStream(destData, true).writeInt(*fcut);
+  juce::MemoryOutputStream(destData, true).writeBool(*filter_bypass);
 }
 
 void AudioPluginAudioProcessor::setStateInformation(const void *data,
@@ -399,14 +570,44 @@ void AudioPluginAudioProcessor::setStateInformation(const void *data,
   *delay =
       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
           .readInt();
-  *dist_ramp =
+  *delay_bypass =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
+
+  *dist_start =
       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
           .readFloat();
-  *dist_dw =
+  *ramp =
       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
           .readFloat();
-  *bypass =
+  *dist_dryWet =
       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *dist_bypass =
+        juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
+  
+  *downSrate =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *bitStart =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *bitRamp =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *bc_dryWet =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readFloat();
+  *bit_bypass = 
+        juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readBool();
+
+  *fcut =
+      juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
+          .readInt();
+  *filter_bypass =
+        juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
           .readBool();
 }
 
