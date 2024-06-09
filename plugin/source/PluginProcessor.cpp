@@ -501,7 +501,7 @@ void AudioPluginAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
         }
         if (*dist_bypass && dist != *dist_start) {
           dist = *dist_start;
-          cout << dist << "\n";
+          // cout << dist << "\n";
         }
         
       }

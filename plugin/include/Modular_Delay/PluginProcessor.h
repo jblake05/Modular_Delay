@@ -11,10 +11,6 @@ public:
     ~AudioPluginAudioProcessor() override;
 
     //==============================================================================
-    juce::AudioProcessorValueTreeState::ParameterLayout paramLayout();
-    juce::AudioProcessorValueTreeState treeState{ *this. nullptr, "Parameters", paramLayout() };
-
-    //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
 
