@@ -254,6 +254,10 @@ float sinc(float x) {
 
 // translated from basic, changing Hamming window to Blackman for better freq response and added conversion b/t Hz and other frequency unit
 // https://www.analog.com/media/en/technical-documentation/dsp-book/dsp_book_Ch16.pdf
+
+// Sample rate values in the set 96x + 128 fail (output silence) when lowpass occurs. 
+// Further, they are the only values where zeroes print in sinc (i.e. b = 0, div 0 error)
+// Seems to happen when wLength (numsamples*2/3) is odd......... 
 void applyLowPass(juce::AudioBuffer<float> &buffer, int numIn, int fc) {
 
   // const int wLength = 64;
@@ -284,10 +288,10 @@ void applyLowPass(juce::AudioBuffer<float> &buffer, int numIn, int fc) {
 // sinc(2fc(n−(N−1)/2)) = sin(2*pi*fc*(n-(N-1)/2))/(2*pi*fc*(n−(N−1)/2))
   // init window
   for (int i = 0; i < wLength; i++) {
-    //  if (i == wLength/2)
-    //   window[i] = (float) sin(2*M_PI*cutoff);
-    //  else
-    window[i] = sinc(2*cutoff*(i - (wLength - 1)/2.0f));
+    if (i == wLength/2)
+      window[i] = (float) sin(2*M_PI*cutoff);
+    else
+      window[i] = sinc(2*cutoff*(i - wLength/2.0f));
     window[i] *= (float) (0.42 - 0.5*cos(2*M_PI*i/wLength) + 0.08*cos(4*M_PI*i/wLength));
 
     // if (i == wLength/2)
