@@ -16,7 +16,11 @@ public:
 private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
+    juce::Slider bitSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bitSliderAttachment;
+
     AudioPluginAudioProcessor& processorRef;
+
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessorEditor)
 };

@@ -10,6 +10,12 @@ AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor(
     AudioPluginAudioProcessor &p)
     : AudioProcessorEditor(&p), processorRef(p) {
   juce::ignoreUnused(processorRef);
+  bitSlider.setSliderStyle(juce::Slider::SliderStyle::RotaryHorizontalVerticalDrag);
+  bitSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, true, 100, 50);
+  addAndMakeVisible(bitSlider);
+
+  bitSliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processorRef.treeState, "BDEPTH", bitSlider);
+
   // Make sure that before the constructor has finished, you've set the
   // editor's size to whatever you need it to be.
   setSize(400, 300);
@@ -37,4 +43,5 @@ void AudioPluginAudioProcessorEditor::paint(juce::Graphics &g) {
 void AudioPluginAudioProcessorEditor::resized() {
   // This is generally where you'll want to lay out the positions of any
   // subcomponents in your editor..
+  bitSlider.setBounds(getWidth()/2 - 100, getHeight()/2 - 50, 200, 100);
 }

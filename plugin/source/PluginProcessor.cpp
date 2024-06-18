@@ -528,9 +528,9 @@ bool AudioPluginAudioProcessor::hasEditor() const {
 }
 
 juce::AudioProcessorEditor *AudioPluginAudioProcessor::createEditor() {
-  // return new AudioPluginAudioProcessorEditor (*this);
+  return new AudioPluginAudioProcessorEditor (*this);
   // generic for now......
-  return new juce::GenericAudioProcessorEditor(*this);
+  // return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
@@ -563,7 +563,8 @@ void AudioPluginAudioProcessor::setStateInformation(const void *data,
                                                     int sizeInBytes) {
   // You should use this method to restore your parameters from this memory
   // block, whose contents will have been created by the getStateInformation()
-  // call. juce::ignoreUnused (data, sizeInBytes);
+  // call. 
+  // juce::ignoreUnused (data, sizeInBytes);
   *feedback =
       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
           .readFloat();
