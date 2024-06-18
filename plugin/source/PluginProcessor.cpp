@@ -67,7 +67,7 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
 #endif
               .withOutput("Output", juce::AudioChannelSet::stereo(), true)
 #endif
-      ) {
+      ), treeState(*this, nullptr, "Parameters", createParameters()) {
   // documented (along with get/set stateInformation) here:
   // https://docs.juce.com/master/tutorial_audio_parameter.html
   addParameter(feedback = new juce::AudioParameterFloat("feedback", "Feedback", 0.0f, .95f, 0.5f));
@@ -615,4 +615,12 @@ void AudioPluginAudioProcessor::setStateInformation(const void *data,
 // This creates new instances of the plugin..
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {
   return new AudioPluginAudioProcessor();
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::createParameters() {
+  std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+  params.push_back(std::make_unique<juce::AudioParameterInt>("BDEPTH", "Bit Depth", 1, 32, 16));
+
+  return {params.begin(), params.end()};
 }
