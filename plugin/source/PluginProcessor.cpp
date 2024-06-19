@@ -565,6 +565,7 @@ void AudioPluginAudioProcessor::setStateInformation(const void *data,
   // block, whose contents will have been created by the getStateInformation()
   // call. 
   // juce::ignoreUnused (data, sizeInBytes);
+
   *feedback =
       juce::MemoryInputStream(data, static_cast<size_t>(sizeInBytes), false)
           .readFloat();
@@ -621,7 +622,28 @@ juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {
 juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::createParameters() {
   std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-  params.push_back(std::make_unique<juce::AudioParameterInt>("BDEPTH", "Bit Depth", 1, 32, 16));
+  // ============================================ DELAY ============================================ 
+  params.push_back(std::make_unique<juce::AudioParameterFloat>("FEEDBACK", "Feedback", 0.0f, 0.95f, 0.5f));
+  params.push_back(std::make_unique<juce::AudioParameterInt>("DELAY", "Delay (ms)", 10, 2000, 500));
+  params.push_back(std::make_unique<juce::AudioParameterBool>("DELAY_BYPASS", "Delay Bypass", false, true, false));
+
+  // ========================================== DISTORTION =========================================
+  params.push_back(std::make_unique<juce::AudioParameterFloat>("DISTORTION_START", "Initial Distortion", 0.0f, 100.0f, 0.5f));
+  params.push_back(std::make_unique<juce::AudioParameterFloat>("DISTORTION_RAMP", "Distortion Ramp", 0.0f, 0.1f, 0.01f));
+  params.push_back(std::make_unique<juce::AudioParameterFloat>("DISTORTION_DW", "Distortion Dry Wet", 0.0f, 1.0f, 0.5f));
+  params.push_back(std::make_unique<juce::AudioParameterBool>("DISTORTION_BYPASS", "Distortion Bypass", false, true, false));
+
+  // =========================================== BITCRUSH ==========================================
+  params.push_back(std::make_unique<juce::AudioParameterInt>("DOWNSAMPLE", "Downsample Rate", 1024, 48000, 48000));
+
+  params.push_back(std::make_unique<juce::AudioParameterInt>("BITCRUSH_START", "Initial Bit Depth", 0, 32, 16));
+  params.push_back(std::make_unique<juce::AudioParameterFloat>("BITCRUSH_RAMP", "Bitcrush Ramp", 0.0f, 4.0f, 1.0f));
+  params.push_back(std::make_unique<juce::AudioParameterFloat>("BITCRUSH_DW", "Bitcrush Dry Wet", 0.0f, 1.0f, 0.5f));
+  params.push_back(std::make_unique<juce::AudioParameterBool>("BITCRUSH_BYPASS", "Bitcrush Bypass", false, true, false));
+
+  // ============================================== EQ =============================================
+  params.push_back(std::make_unique<juce::AudioParameterInt>("FILTER_CUTOFF", "Filter Cutoff", 100, 20000, 20000));
+  params.push_back(std::make_unique<juce::AudioParameterBool>("FILTER_BYPASS", "Filter Bypass", false, true, false));
 
   return {params.begin(), params.end()};
 }
