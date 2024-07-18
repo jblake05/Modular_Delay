@@ -19,7 +19,7 @@ private:
     juce::Slider bitSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bitSliderAttachment;
 
-    // void linkSlider(juce::Slider *slider, std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment, string id);
+    void linkSlider(AudioPluginAudioProcessor &processorRef, juce::Slider *slider, std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> & attachment, std::string id);
 
     AudioPluginAudioProcessor& processorRef;
 
